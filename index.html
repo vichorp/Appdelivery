@@ -1,90 +1,129 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Zona de Reparto</title>
+<title>Zona de Reparto - San Pedro de la Paz</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
 
 <style>
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
+body { margin:0; font-family: Arial, sans-serif; background:#f4f4f4; }
+#map { height:50vh; width:100%; }
+.container { padding:15px; }
+
+input, select {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    margin-bottom:10px;
 }
 
-#map {
-    height: 100vh;
-    width: 100%;
+button {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border:none;
+    border-radius:8px;
+    background:#007bff;
+    color:white;
+    cursor:pointer;
+}
+button:hover { background:#0056b3; }
+
+#result {
+    margin-top:10px;
+    font-weight:bold;
+    text-align:center;
+    padding:10px;
+    border-radius:8px;
 }
 
-.titulo {
-    position: absolute;
-    top: 15px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(44, 62, 80, 0.95);
-    color: white;
-    padding: 10px 25px;
-    border-radius: 12px;
-    font-weight: bold;
-    z-index: 1000;
-}
+.inside { background:#d4edda; color:#155724; }
+.outside { background:#f8d7da; color:#721c24; }
 
-.panel {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
-    z-index: 1000;
-    font-size: 14px;
+#history { margin-top:15px; font-size:14px; }
+.history-item {
+    padding:6px;
+    border-bottom:1px solid #ddd;
+    cursor:pointer;
 }
+.history-item:hover { background:#eee; }
 
-.estado-dentro {
-    color: green;
-    font-weight: bold;
-}
-
-.estado-fuera {
-    color: red;
-    font-weight: bold;
+@media (min-width:768px){
+    #map { height:60vh; }
 }
 </style>
 </head>
 <body>
 
-<div class="titulo">Zona de Reparto</div>
 <div id="map"></div>
 
-<div class="panel">
-    <div><strong>Estado:</strong> <span id="estado">Sin verificar</span></div>
+<div class="container">
+
+<select id="zoneSelector">
+    <option value="1500">Dibujar Zona $1.500</option>
+    <option value="2500">Dibujar Zona $2.500</option>
+</select>
+
+<input type="text" id="addressInput" placeholder="Ingresa una dirección...">
+<button onclick="searchAddress()">Verificar Dirección</button>
+
+<div id="result"></div>
+
+<div id="history">
+    <strong>Historial:</strong>
+    <div id="historyList"></div>
+</div>
+
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 
 <script>
 
-// MAPA
-var map = L.map('map').setView([-36.84, -73.10], 13);
+// ================= MAPA =================
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+const huertosFamiliares = [-36.8404, -73.1036];
+const map = L.map('map').setView(huertosFamiliares, 15);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// MULTIPOLYGON CORRECTO
-var zonaReparto = {
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+const drawControl = new L.Control.Draw({
+    draw:{
+        polygon:true,
+        rectangle:false,
+        circle:false,
+        marker:false,
+        polyline:false,
+        circlemarker:false
+    },
+    edit:{ featureGroup: drawnItems }
+});
+map.addControl(drawControl);
+
+let zones = {
+    1500:null,
+    2500:null
+};
+
+// ================= ZONAS PREDETERMINADAS =================
+
+const defaultZone1500 = {
 "type":"Feature",
 "properties":{},
 "geometry":{
-"type":"MultiPolygon",
-"coordinates":[
-
-[[
+"type":"Polygon",
+"coordinates":[[
 [-73.119464,-36.8254],
 [-73.119464,-36.826501],
 [-73.121266,-36.829493],
@@ -104,9 +143,16 @@ var zonaReparto = {
 [-73.096547,-36.831302],
 [-73.108821,-36.826556],
 [-73.119464,-36.8254]
-]],
+]]
+}
+};
 
-[[
+const defaultZone2500 = {
+"type":"Feature",
+"properties":{},
+"geometry":{
+"type":"Polygon",
+"coordinates":[[
 [-73.10204,-36.85152],
 [-73.105903,-36.854202],
 [-73.108563,-36.861628],
@@ -120,38 +166,141 @@ var zonaReparto = {
 [-73.09689,-36.848873],
 [-73.10204,-36.85152]
 ]]
-
-]
 }
 };
 
-// DIBUJAR
-var capaZona = L.geoJSON(zonaReparto, {
-    style: {
-        color: "#e74c3c",
-        weight: 3,
-        fillColor: "#e74c3c",
-        fillOpacity: 0.25
+function loadZones(){
+
+    // Zona $1500
+    let layer1500 = L.geoJSON(defaultZone1500,{
+        style:{ color:"green" }
+    }).getLayers()[0];
+
+    zones[1500] = layer1500;
+    drawnItems.addLayer(layer1500);
+
+    // Zona $2500
+    let layer2500 = L.geoJSON(defaultZone2500,{
+        style:{ color:"red" }
+    }).getLayers()[0];
+
+    zones[2500] = layer2500;
+    drawnItems.addLayer(layer2500);
+}
+
+loadZones();
+
+// ================= DIBUJAR NUEVAS ZONAS =================
+
+map.on(L.Draw.Event.CREATED, function(e){
+
+    const price = document.getElementById("zoneSelector").value;
+    const layer = e.layer;
+
+    layer.setStyle({
+        color: price == 1500 ? "green" : "red"
+    });
+
+    if(zones[price]){
+        drawnItems.removeLayer(zones[price]);
     }
-}).addTo(map);
 
-map.fitBounds(capaZona.getBounds());
-
-// CLICK
-map.on("click", function(e){
-
-    var punto = turf.point([e.latlng.lng, e.latlng.lat]);
-    var dentro = turf.booleanPointInPolygon(punto, zonaReparto);
-
-    if(dentro){
-        document.getElementById("estado").innerHTML =
-        "<span class='estado-dentro'>DENTRO DE ZONA</span>";
-    } else {
-        document.getElementById("estado").innerHTML =
-        "<span class='estado-fuera'>FUERA DE ZONA</span>";
-    }
-
+    zones[price] = layer;
+    drawnItems.addLayer(layer);
 });
+
+// ================= BUSCAR DIRECCIÓN =================
+
+async function searchAddress(){
+
+    const address = document.getElementById("addressInput").value;
+    if(!address){
+        alert("Ingresa una dirección");
+        return;
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", San Pedro de la Paz, Chile")}`;
+
+    const response = await fetch(url,{ headers:{ "Accept-Language":"es" }});
+    const data = await response.json();
+
+    if(data.length === 0){
+        alert("Dirección no encontrada");
+        return;
+    }
+
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
+
+    L.marker([lat,lon]).addTo(map);
+    map.setView([lat,lon],17);
+
+    checkZones(lat,lon);
+    saveToHistory(address);
+}
+
+// ================= VERIFICAR ZONA =================
+
+function isInside(point, vs){
+    let x = point[0], y = point[1];
+    let inside = false;
+    for(let i=0, j=vs.length-1; i<vs.length; j=i++){
+        let xi=vs[i][0], yi=vs[i][1];
+        let xj=vs[j][0], yj=vs[j][1];
+        let intersect=((yi>y)!=(yj>y)) &&
+            (x<(xj-xi)*(y-yi)/(yj-yi)+xi);
+        if(intersect) inside=!inside;
+    }
+    return inside;
+}
+
+function checkZones(lat,lon){
+
+    const resultDiv = document.getElementById("result");
+
+    for(let price of [1500,2500]){
+        if(zones[price]){
+            const coords = zones[price].getLatLngs()[0].map(c=>[c.lat,c.lng]);
+            if(isInside([lat,lon],coords)){
+                resultDiv.innerHTML = `DENTRO DEL REPARTO<br>Precio: $${price}`;
+                resultDiv.className = "inside";
+                return;
+            }
+        }
+    }
+
+    resultDiv.innerHTML = "FUERA DEL REPARTO";
+    resultDiv.className = "outside";
+}
+
+// ================= HISTORIAL =================
+
+function saveToHistory(address){
+    let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
+    history.unshift(address);
+    history = history.slice(0,10);
+    localStorage.setItem("searchHistory", JSON.stringify(history));
+    renderHistory();
+}
+
+function renderHistory(){
+    const historyList = document.getElementById("historyList");
+    historyList.innerHTML = "";
+    let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
+
+    history.forEach(item=>{
+        const div = document.createElement("div");
+        div.className="history-item";
+        div.textContent=item;
+        div.onclick=()=>{
+            document.getElementById("addressInput").value=item;
+            searchAddress();
+        };
+        historyList.appendChild(div);
+    });
+}
+
+renderHistory();
 
 </script>
 
