@@ -44,17 +44,6 @@ body {
     font-size: 14px;
 }
 
-.boton {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: #2c3e50;
-    color: white;
-    border-radius: 8px;
-    cursor: pointer;
-    text-align: center;
-}
-
 .estado-dentro {
     color: green;
     font-weight: bold;
@@ -73,9 +62,6 @@ body {
 
 <div class="panel">
     <div><strong>Estado:</strong> <span id="estado">Sin verificar</span></div>
-    <div><strong>Distancia:</strong> <span id="distancia">-</span></div>
-    <div><strong>Delivery:</strong> <span id="precio">-</span></div>
-    <div class="boton" onclick="centrarMapa()">Centrar Mapa</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -83,20 +69,22 @@ body {
 
 <script>
 
-// ================== MAPA ==================
-var map = L.map('map').setView([-36.834, -73.1099], 13);
+// MAPA
+var map = L.map('map').setView([-36.84, -73.10], 13);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// ================== POLIGONO ==================
+// MULTIPOLYGON CORRECTO
 var zonaReparto = {
 "type":"Feature",
 "properties":{},
 "geometry":{
-"type":"Polygon",
-"coordinates":[[
+"type":"MultiPolygon",
+"coordinates":[
+
+[[
 [-73.119464,-36.8254],
 [-73.119464,-36.826501],
 [-73.121266,-36.829493],
@@ -115,7 +103,10 @@ var zonaReparto = {
 [-73.075948,-36.841515],
 [-73.096547,-36.831302],
 [-73.108821,-36.826556],
-[-73.119464,-36.8254],
+[-73.119464,-36.8254]
+]],
+
+[[
 [-73.10204,-36.85152],
 [-73.105903,-36.854202],
 [-73.108563,-36.861628],
@@ -129,10 +120,12 @@ var zonaReparto = {
 [-73.09689,-36.848873],
 [-73.10204,-36.85152]
 ]]
+
+]
 }
 };
 
-// Dibujar polígono
+// DIBUJAR
 var capaZona = L.geoJSON(zonaReparto, {
     style: {
         color: "#e74c3c",
@@ -142,57 +135,23 @@ var capaZona = L.geoJSON(zonaReparto, {
     }
 }).addTo(map);
 
-// Ajustar mapa a zona
 map.fitBounds(capaZona.getBounds());
 
-// ================== VARIABLES ==================
-var marcadorCliente = null;
-
-// Las coordenadas base de tu local (Las Violetas 1835 aprox.)
-var local = turf.point([-73.1099, -36.8337]);
-
-// ================== FUNCION CLICK ==================
+// CLICK
 map.on("click", function(e){
 
-    var lat = e.latlng.lat;
-    var lng = e.latlng.lng;
-
-    if(marcadorCliente){
-        map.removeLayer(marcadorCliente);
-    }
-
-    marcadorCliente = L.marker([lat,lng]).addTo(map);
-
-    var punto = turf.point([lng,lat]);
+    var punto = turf.point([e.latlng.lng, e.latlng.lat]);
     var dentro = turf.booleanPointInPolygon(punto, zonaReparto);
 
-    var distancia = turf.distance(local, punto, {units: 'kilometers'});
-
-    document.getElementById("distancia").innerHTML = distancia.toFixed(2) + " km";
-
     if(dentro){
-        document.getElementById("estado").innerHTML = "<span class='estado-dentro'>DENTRO DE ZONA</span>";
-
-        // Ejemplo cálculo delivery
-        var precio = 1500;
-        if(distancia > 3){
-            precio = 2000;
-        }
-        if(distancia > 5){
-            precio = 2500;
-        }
-
-        document.getElementById("precio").innerHTML = "$" + precio;
+        document.getElementById("estado").innerHTML =
+        "<span class='estado-dentro'>DENTRO DE ZONA</span>";
     } else {
-        document.getElementById("estado").innerHTML = "<span class='estado-fuera'>FUERA DE ZONA</span>";
-        document.getElementById("precio").innerHTML = "No disponible";
+        document.getElementById("estado").innerHTML =
+        "<span class='estado-fuera'>FUERA DE ZONA</span>";
     }
-});
 
-// ================== CENTRAR ==================
-function centrarMapa(){
-    map.fitBounds(capaZona.getBounds());
-}
+});
 
 </script>
 
