@@ -5,90 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zona de Reparto - San Pedro de la Paz</title>
 
-<!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
-<!-- Leaflet Draw CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
 
 <style>
-    body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: #f4f4f4;
-    }
+body { margin:0; font-family: Arial, sans-serif; background:#f4f4f4; }
+#map { height:50vh; width:100%; }
+.container { padding:15px; }
 
-    #map {
-        height: 50vh;
-        width: 100%;
-    }
+input, select {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    margin-bottom:10px;
+}
 
-    .container {
-        padding: 15px;
-    }
+button {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border:none;
+    border-radius:8px;
+    background:#007bff;
+    color:white;
+    cursor:pointer;
+}
+button:hover { background:#0056b3; }
 
-    input {
-        width: 100%;
-        padding: 12px;
-        font-size: 16px;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        margin-bottom: 10px;
-    }
+#result {
+    margin-top:10px;
+    font-weight:bold;
+    text-align:center;
+    padding:10px;
+    border-radius:8px;
+}
 
-    button {
-        width: 100%;
-        padding: 12px;
-        font-size: 16px;
-        border: none;
-        border-radius: 8px;
-        background-color: #007bff;
-        color: white;
-        cursor: pointer;
-    }
+.inside { background:#d4edda; color:#155724; }
+.outside { background:#f8d7da; color:#721c24; }
 
-    button:hover {
-        background-color: #0056b3;
-    }
+#history { margin-top:15px; font-size:14px; }
+.history-item {
+    padding:6px;
+    border-bottom:1px solid #ddd;
+    cursor:pointer;
+}
+.history-item:hover { background:#eee; }
 
-    #result {
-        margin-top: 10px;
-        font-weight: bold;
-        text-align: center;
-        padding: 10px;
-        border-radius: 8px;
-    }
-
-    .inside {
-        background-color: #d4edda;
-        color: #155724;
-    }
-
-    .outside {
-        background-color: #f8d7da;
-        color: #721c24;
-    }
-
-    #history {
-        margin-top: 15px;
-        font-size: 14px;
-    }
-
-    .history-item {
-        padding: 6px;
-        border-bottom: 1px solid #ddd;
-        cursor: pointer;
-    }
-
-    .history-item:hover {
-        background-color: #eee;
-    }
-
-    @media (min-width: 768px) {
-        #map {
-            height: 60vh;
-        }
-    }
+@media (min-width:768px){
+    #map { height:60vh; }
+}
 </style>
 </head>
 <body>
@@ -96,94 +63,125 @@
 <div id="map"></div>
 
 <div class="container">
-    <input type="text" id="addressInput" placeholder="Ingresa una dirección...">
-    <button onclick="searchAddress()">Verificar Dirección</button>
-    <div id="result"></div>
-    <div id="history">
-        <strong>Historial:</strong>
-        <div id="historyList"></div>
-    </div>
+
+<select id="zoneSelector">
+    <option value="1500">Dibujar Zona $1.500</option>
+    <option value="2500">Dibujar Zona $2.500</option>
+</select>
+
+<input type="text" id="addressInput" placeholder="Ingresa una dirección...">
+<button onclick="searchAddress()">Verificar Dirección</button>
+
+<div id="result"></div>
+
+<div id="history">
+    <strong>Historial:</strong>
+    <div id="historyList"></div>
 </div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</div>
 
-<!-- Leaflet Draw JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 
 <script>
-// ===============================
-// INICIALIZACIÓN DEL MAPA
-// ===============================
 
-// Coordenadas aproximadas de Huertos Familiares, San Pedro de la Paz
+// ================= MAPA =================
+
 const huertosFamiliares = [-36.8404, -73.1036];
-
-// Crear mapa
 const map = L.map('map').setView(huertosFamiliares, 15);
 
-// Cargar OpenStreetMap
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
-
-// ===============================
-// DIBUJO DE POLÍGONO
-// ===============================
 
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
 const drawControl = new L.Control.Draw({
-    draw: {
-        polygon: true,
-        rectangle: false,
-        circle: false,
-        marker: false,
-        polyline: false,
-        circlemarker: false
+    draw:{
+        polygon:true,
+        rectangle:false,
+        circle:false,
+        marker:false,
+        polyline:false,
+        circlemarker:false
     },
-    edit: {
-        featureGroup: drawnItems
-    }
+    edit:{ featureGroup: drawnItems }
 });
-
 map.addControl(drawControl);
 
-let currentPolygon = null;
+// ================= ZONAS =================
 
-// Evento cuando se crea un polígono
-map.on(L.Draw.Event.CREATED, function (e) {
-    drawnItems.clearLayers(); // Solo permitir un polígono
+let zones = {
+    1500:null,
+    2500:null
+};
+
+map.on(L.Draw.Event.CREATED, function(e){
+
+    const price = document.getElementById("zoneSelector").value;
     const layer = e.layer;
+
+    layer.setStyle({
+        color: price == 1500 ? "green" : "red"
+    });
+
+    // Reemplaza zona anterior del mismo precio
+    if(zones[price]){
+        drawnItems.removeLayer(zones[price]);
+    }
+
+    zones[price] = layer;
     drawnItems.addLayer(layer);
-    currentPolygon = layer;
+
+    saveZones();
 });
 
-// ===============================
-// BUSCAR DIRECCIÓN
-// ===============================
+function saveZones(){
+    let data = {};
+    for(let price in zones){
+        if(zones[price]){
+            data[price] = zones[price].toGeoJSON();
+        }
+    }
+    localStorage.setItem("deliveryZones", JSON.stringify(data));
+}
 
-async function searchAddress() {
+function loadZones(){
+    let data = JSON.parse(localStorage.getItem("deliveryZones"));
+    if(!data) return;
+
+    for(let price in data){
+        let layer = L.geoJSON(data[price],{
+            style:{
+                color: price == 1500 ? "green" : "red"
+            }
+        }).getLayers()[0];
+
+        zones[price] = layer;
+        drawnItems.addLayer(layer);
+    }
+}
+
+loadZones();
+
+// ================= BUSCAR DIRECCIÓN =================
+
+async function searchAddress(){
+
     const address = document.getElementById("addressInput").value;
-
-    if (!address) {
+    if(!address){
         alert("Ingresa una dirección");
         return;
     }
 
-    // Llamada a Nominatim (OpenStreetMap)
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", San Pedro de la Paz, Chile")}`;
 
-    const response = await fetch(url, {
-        headers: {
-            "Accept-Language": "es"
-        }
-    });
-
+    const response = await fetch(url,{ headers:{ "Accept-Language":"es" }});
     const data = await response.json();
 
-    if (data.length === 0) {
+    if(data.length === 0){
         alert("Dirección no encontrada");
         return;
     }
@@ -191,87 +189,74 @@ async function searchAddress() {
     const lat = parseFloat(data[0].lat);
     const lon = parseFloat(data[0].lon);
 
-    const marker = L.marker([lat, lon]).addTo(map);
-    map.setView([lat, lon], 17);
+    L.marker([lat,lon]).addTo(map);
+    map.setView([lat,lon],17);
 
-    checkIfInside(lat, lon);
+    checkZones(lat,lon);
     saveToHistory(address);
 }
 
-// ===============================
-// VERIFICAR SI ESTÁ DENTRO
-// ===============================
+// ================= VERIFICAR ZONA =================
 
-// Algoritmo point-in-polygon
-function isPointInsidePolygon(point, vs) {
+function isInside(point, vs){
     let x = point[0], y = point[1];
     let inside = false;
-
-    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-        let xi = vs[i][0], yi = vs[i][1];
-        let xj = vs[j][0], yj = vs[j][1];
-
-        let intersect = ((yi > y) != (yj > y)) &&
-            (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
+    for(let i=0, j=vs.length-1; i<vs.length; j=i++){
+        let xi=vs[i][0], yi=vs[i][1];
+        let xj=vs[j][0], yj=vs[j][1];
+        let intersect=((yi>y)!=(yj>y)) &&
+            (x<(xj-xi)*(y-yi)/(yj-yi)+xi);
+        if(intersect) inside=!inside;
     }
-
     return inside;
 }
 
-function checkIfInside(lat, lon) {
+function checkZones(lat,lon){
+
     const resultDiv = document.getElementById("result");
 
-    if (!currentPolygon) {
-        resultDiv.innerHTML = "Primero dibuja tu zona de reparto";
-        resultDiv.className = "";
-        return;
+    for(let price of [1500,2500]){
+        if(zones[price]){
+            const coords = zones[price].getLatLngs()[0].map(c=>[c.lat,c.lng]);
+            if(isInside([lat,lon],coords)){
+                resultDiv.innerHTML = `DENTRO DEL REPARTO<br>Precio: $${price}`;
+                resultDiv.className = "inside";
+                return;
+            }
+        }
     }
 
-    const polygonCoords = currentPolygon.getLatLngs()[0].map(coord => [coord.lat, coord.lng]);
-
-    const inside = isPointInsidePolygon([lat, lon], polygonCoords);
-
-    if (inside) {
-        resultDiv.innerHTML = "DENTRO DEL REPARTO";
-        resultDiv.className = "inside";
-    } else {
-        resultDiv.innerHTML = "FUERA DEL REPARTO";
-        resultDiv.className = "outside";
-    }
+    resultDiv.innerHTML = "FUERA DEL REPARTO";
+    resultDiv.className = "outside";
 }
 
-// ===============================
-// HISTORIAL CON LOCALSTORAGE
-// ===============================
+// ================= HISTORIAL =================
 
-function saveToHistory(address) {
+function saveToHistory(address){
     let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
     history.unshift(address);
-    history = history.slice(0, 10); // Máximo 10 registros
+    history = history.slice(0,10);
     localStorage.setItem("searchHistory", JSON.stringify(history));
     renderHistory();
 }
 
-function renderHistory() {
+function renderHistory(){
     const historyList = document.getElementById("historyList");
     historyList.innerHTML = "";
-
     let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
 
-    history.forEach(item => {
+    history.forEach(item=>{
         const div = document.createElement("div");
-        div.className = "history-item";
-        div.textContent = item;
-        div.onclick = () => {
-            document.getElementById("addressInput").value = item;
+        div.className="history-item";
+        div.textContent=item;
+        div.onclick=()=>{
+            document.getElementById("addressInput").value=item;
             searchAddress();
         };
         historyList.appendChild(div);
     });
 }
 
-// Cargar historial al iniciar
 renderHistory();
 
 </script>
