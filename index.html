@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zona de Reparto - San Pedro de la Paz</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<!-- Leaflet Draw CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+
+<style>
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f4f4f4;
+    }
+
+    #map {
+        height: 50vh;
+        width: 100%;
+    }
+
+    .container {
+        padding: 15px;
+    }
+
+    input {
+        width: 100%;
+        padding: 12px;
+        font-size: 16px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        margin-bottom: 10px;
+    }
+
+    button {
+        width: 100%;
+        padding: 12px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        background-color: #007bff;
+        color: white;
+        cursor: pointer;
+    }
+
+    button:hover {
+        background-color: #0056b3;
+    }
+
+    #result {
+        margin-top: 10px;
+        font-weight: bold;
+        text-align: center;
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    .inside {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .outside {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    #history {
+        margin-top: 15px;
+        font-size: 14px;
+    }
+
+    .history-item {
+        padding: 6px;
+        border-bottom: 1px solid #ddd;
+        cursor: pointer;
+    }
+
+    .history-item:hover {
+        background-color: #eee;
+    }
+
+    @media (min-width: 768px) {
+        #map {
+            height: 60vh;
+        }
+    }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="container">
+    <input type="text" id="addressInput" placeholder="Ingresa una dirección...">
+    <button onclick="searchAddress()">Verificar Dirección</button>
+    <div id="result"></div>
+    <div id="history">
+        <strong>Historial:</strong>
+        <div id="historyList"></div>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Leaflet Draw JS -->
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+<script>
+// ===============================
+// INICIALIZACIÓN DEL MAPA
+// ===============================
+
+// Coordenadas aproximadas de Huertos Familiares, San Pedro de la Paz
+const huertosFamiliares = [-36.8404, -73.1036];
+
+// Crear mapa
+const map = L.map('map').setView(huertosFamiliares, 15);
+
+// Cargar OpenStreetMap
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+// ===============================
+// DIBUJO DE POLÍGONO
+// ===============================
+
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+const drawControl = new L.Control.Draw({
+    draw: {
+        polygon: true,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        polyline: false,
+        circlemarker: false
+    },
+    edit: {
+        featureGroup: drawnItems
+    }
+});
+
+map.addControl(drawControl);
+
+let currentPolygon = null;
+
+// Evento cuando se crea un polígono
+map.on(L.Draw.Event.CREATED, function (e) {
+    drawnItems.clearLayers(); // Solo permitir un polígono
+    const layer = e.layer;
+    drawnItems.addLayer(layer);
+    currentPolygon = layer;
+});
+
+// ===============================
+// BUSCAR DIRECCIÓN
+// ===============================
+
+async function searchAddress() {
+    const address = document.getElementById("addressInput").value;
+
+    if (!address) {
+        alert("Ingresa una dirección");
+        return;
+    }
+
+    // Llamada a Nominatim (OpenStreetMap)
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", San Pedro de la Paz, Chile")}`;
+
+    const response = await fetch(url, {
+        headers: {
+            "Accept-Language": "es"
+        }
+    });
+
+    const data = await response.json();
+
+    if (data.length === 0) {
+        alert("Dirección no encontrada");
+        return;
+    }
+
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
+
+    const marker = L.marker([lat, lon]).addTo(map);
+    map.setView([lat, lon], 17);
+
+    checkIfInside(lat, lon);
+    saveToHistory(address);
+}
+
+// ===============================
+// VERIFICAR SI ESTÁ DENTRO
+// ===============================
+
+// Algoritmo point-in-polygon
+function isPointInsidePolygon(point, vs) {
+    let x = point[0], y = point[1];
+    let inside = false;
+
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        let xi = vs[i][0], yi = vs[i][1];
+        let xj = vs[j][0], yj = vs[j][1];
+
+        let intersect = ((yi > y) != (yj > y)) &&
+            (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+
+    return inside;
+}
+
+function checkIfInside(lat, lon) {
+    const resultDiv = document.getElementById("result");
+
+    if (!currentPolygon) {
+        resultDiv.innerHTML = "Primero dibuja tu zona de reparto";
+        resultDiv.className = "";
+        return;
+    }
+
+    const polygonCoords = currentPolygon.getLatLngs()[0].map(coord => [coord.lat, coord.lng]);
+
+    const inside = isPointInsidePolygon([lat, lon], polygonCoords);
+
+    if (inside) {
+        resultDiv.innerHTML = "DENTRO DEL REPARTO";
+        resultDiv.className = "inside";
+    } else {
+        resultDiv.innerHTML = "FUERA DEL REPARTO";
+        resultDiv.className = "outside";
+    }
+}
+
+// ===============================
+// HISTORIAL CON LOCALSTORAGE
+// ===============================
+
+function saveToHistory(address) {
+    let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
+    history.unshift(address);
+    history = history.slice(0, 10); // Máximo 10 registros
+    localStorage.setItem("searchHistory", JSON.stringify(history));
+    renderHistory();
+}
+
+function renderHistory() {
+    const historyList = document.getElementById("historyList");
+    historyList.innerHTML = "";
+
+    let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
+
+    history.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "history-item";
+        div.textContent = item;
+        div.onclick = () => {
+            document.getElementById("addressInput").value = item;
+            searchAddress();
+        };
+        historyList.appendChild(div);
+    });
+}
+
+// Cargar historial al iniciar
+renderHistory();
+
+</script>
+
+</body>
+</html>
