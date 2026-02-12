@@ -111,12 +111,86 @@ const drawControl = new L.Control.Draw({
 });
 map.addControl(drawControl);
 
-// ================= ZONAS =================
-
 let zones = {
     1500:null,
     2500:null
 };
+
+// ================= ZONAS PREDETERMINADAS =================
+
+const defaultZone1500 = {
+"type":"Feature",
+"properties":{},
+"geometry":{
+"type":"Polygon",
+"coordinates":[[
+[-73.119464,-36.8254],
+[-73.119464,-36.826501],
+[-73.121266,-36.829493],
+[-73.120279,-36.835201],
+[-73.118691,-36.837406],
+[-73.121266,-36.837991],
+[-73.123026,-36.843385],
+[-73.119335,-36.849574],
+[-73.112984,-36.85088],
+[-73.110323,-36.846823],
+[-73.101997,-36.851362],
+[-73.096933,-36.848542],
+[-73.095989,-36.846019],
+[-73.085518,-36.843337],
+[-73.076892,-36.844472],
+[-73.075948,-36.841515],
+[-73.096547,-36.831302],
+[-73.108821,-36.826556],
+[-73.119464,-36.8254]
+]]
+}
+};
+
+const defaultZone2500 = {
+"type":"Feature",
+"properties":{},
+"geometry":{
+"type":"Polygon",
+"coordinates":[[
+[-73.10204,-36.85152],
+[-73.105903,-36.854202],
+[-73.108563,-36.861628],
+[-73.103757,-36.867093],
+[-73.09659,-36.870462],
+[-73.097835,-36.873418],
+[-73.092985,-36.873349],
+[-73.061786,-36.876339],
+[-73.073802,-36.844954],
+[-73.095775,-36.846157],
+[-73.09689,-36.848873],
+[-73.10204,-36.85152]
+]]
+}
+};
+
+function loadZones(){
+
+    // Zona $1500
+    let layer1500 = L.geoJSON(defaultZone1500,{
+        style:{ color:"green" }
+    }).getLayers()[0];
+
+    zones[1500] = layer1500;
+    drawnItems.addLayer(layer1500);
+
+    // Zona $2500
+    let layer2500 = L.geoJSON(defaultZone2500,{
+        style:{ color:"red" }
+    }).getLayers()[0];
+
+    zones[2500] = layer2500;
+    drawnItems.addLayer(layer2500);
+}
+
+loadZones();
+
+// ================= DIBUJAR NUEVAS ZONAS =================
 
 map.on(L.Draw.Event.CREATED, function(e){
 
@@ -127,44 +201,13 @@ map.on(L.Draw.Event.CREATED, function(e){
         color: price == 1500 ? "green" : "red"
     });
 
-    // Reemplaza zona anterior del mismo precio
     if(zones[price]){
         drawnItems.removeLayer(zones[price]);
     }
 
     zones[price] = layer;
     drawnItems.addLayer(layer);
-
-    saveZones();
 });
-
-function saveZones(){
-    let data = {};
-    for(let price in zones){
-        if(zones[price]){
-            data[price] = zones[price].toGeoJSON();
-        }
-    }
-    localStorage.setItem("deliveryZones", JSON.stringify(data));
-}
-
-function loadZones(){
-    let data = JSON.parse(localStorage.getItem("deliveryZones"));
-    if(!data) return;
-
-    for(let price in data){
-        let layer = L.geoJSON(data[price],{
-            style:{
-                color: price == 1500 ? "green" : "red"
-            }
-        }).getLayers()[0];
-
-        zones[price] = layer;
-        drawnItems.addLayer(layer);
-    }
-}
-
-loadZones();
 
 // ================= BUSCAR DIRECCIÓN =================
 
