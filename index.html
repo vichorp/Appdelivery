@@ -1,3 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zona de Reparto - San Pedro de la Paz</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+
+<style>
+body { margin:0; font-family: Arial, sans-serif; background:#f4f4f4; }
+#map { height:50vh; width:100%; }
+.container { padding:15px; }
+
+input, select {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    margin-bottom:10px;
+}
+
+button {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    border:none;
+    border-radius:8px;
+    background:#007bff;
+    color:white;
+    cursor:pointer;
+}
+button:hover { background:#0056b3; }
+
+#result {
+    margin-top:10px;
+    font-weight:bold;
+    text-align:center;
+    padding:10px;
+    border-radius:8px;
+}
+
+.inside { background:#d4edda; color:#155724; }
+.outside { background:#f8d7da; color:#721c24; }
+
+#history { margin-top:15px; font-size:14px; }
+.history-item {
+    padding:6px;
+    border-bottom:1px solid #ddd;
+    cursor:pointer;
+}
+.history-item:hover { background:#eee; }
+
+@media (min-width:768px){
+    #map { height:60vh; }
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="container">
+
+<select id="zoneSelector">
+    <option value="1500">Dibujar Zona $1.500</option>
+    <option value="2500">Dibujar Zona $2.500</option>
+</select>
+
+<input type="text" id="addressInput" placeholder="Ingresa una dirección...">
+<button onclick="searchAddress()">Verificar Dirección</button>
+
+<div id="result"></div>
+
+<div id="history">
+    <strong>Historial:</strong>
+    <div id="historyList"></div>
+</div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
 <script>
 
 // ================= MAPA =================
@@ -30,21 +116,62 @@ let zones = {
     2500:null
 };
 
-let currentMarker = null;
-
 // ================= ZONAS PREDETERMINADAS =================
 
-const defaultZone1500 = { /* TU JSON ORIGINAL SIN CAMBIOS */ };
-const defaultZone2500 = { /* TU JSON ORIGINAL SIN CAMBIOS */ };
+const defaultZone1500 = {
+"type":"Feature",
+"properties":{},
+"geometry":{
+"type":"Polygon",
+"coordinates":[[
+[-73.119464,-36.8254],
+[-73.119464,-36.826501],
+[-73.121266,-36.829493],
+[-73.120279,-36.835201],
+[-73.118691,-36.837406],
+[-73.121266,-36.837991],
+[-73.123026,-36.843385],
+[-73.119335,-36.849574],
+[-73.112984,-36.85088],
+[-73.110323,-36.846823],
+[-73.101997,-36.851362],
+[-73.096933,-36.848542],
+[-73.095989,-36.846019],
+[-73.085518,-36.843337],
+[-73.076892,-36.844472],
+[-73.075948,-36.841515],
+[-73.096547,-36.831302],
+[-73.108821,-36.826556],
+[-73.119464,-36.8254]
+]]
+}
+};
 
-// ⚠️ IMPORTANTE:
-// Mantén exactamente los mismos JSON que ya tienes.
-// No los repito aquí para no alterar nada accidentalmente.
-
-loadZones();
+const defaultZone2500 = {
+"type":"Feature",
+"properties":{},
+"geometry":{
+"type":"Polygon",
+"coordinates":[[
+[-73.10204,-36.85152],
+[-73.105903,-36.854202],
+[-73.108563,-36.861628],
+[-73.103757,-36.867093],
+[-73.09659,-36.870462],
+[-73.097835,-36.873418],
+[-73.092985,-36.873349],
+[-73.061786,-36.876339],
+[-73.073802,-36.844954],
+[-73.095775,-36.846157],
+[-73.09689,-36.848873],
+[-73.10204,-36.85152]
+]]
+}
+};
 
 function loadZones(){
 
+    // Zona $1500
     let layer1500 = L.geoJSON(defaultZone1500,{
         style:{ color:"green" }
     }).getLayers()[0];
@@ -52,6 +179,7 @@ function loadZones(){
     zones[1500] = layer1500;
     drawnItems.addLayer(layer1500);
 
+    // Zona $2500
     let layer2500 = L.geoJSON(defaultZone2500,{
         style:{ color:"red" }
     }).getLayers()[0];
@@ -59,6 +187,8 @@ function loadZones(){
     zones[2500] = layer2500;
     drawnItems.addLayer(layer2500);
 }
+
+loadZones();
 
 // ================= DIBUJAR NUEVAS ZONAS =================
 
@@ -79,72 +209,34 @@ map.on(L.Draw.Event.CREATED, function(e){
     drawnItems.addLayer(layer);
 });
 
-// ================= NORMALIZACIÓN =================
-
-function normalizeAddress(text){
-    return text
-        .toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/\bav\b/g,"avenida")
-        .replace(/\bpto\b/g,"puerto")
-        .replace(/\bpje\b/g,"pasaje")
-        .trim();
-}
-
-// ================= BUSCAR DIRECCIÓN (V2 PROFESIONAL) =================
+// ================= BUSCAR DIRECCIÓN =================
 
 async function searchAddress(){
 
-    const rawAddress = document.getElementById("addressInput").value;
-    if(!rawAddress){
+    const address = document.getElementById("addressInput").value;
+    if(!address){
         alert("Ingresa una dirección");
         return;
     }
 
-    const address = normalizeAddress(rawAddress);
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", San Pedro de la Paz, Chile")}`;
 
-    const viewbox = "-73.15,-36.88,-73.05,-36.80";
+    const response = await fetch(url,{ headers:{ "Accept-Language":"es" }});
+    const data = await response.json();
 
-    const url = `https://nominatim.openstreetmap.org/search?format=json&street=${encodeURIComponent(address)}&city=San Pedro de la Paz&country=Chile&countrycodes=cl&addressdetails=1&limit=3&viewbox=${viewbox}&bounded=1`;
-
-    try{
-
-        const response = await fetch(url,{
-            headers:{ "Accept-Language":"es" }
-        });
-
-        const data = await response.json();
-
-        if(data.length === 0){
-            alert("Dirección no encontrada");
-            return;
-        }
-
-        // Buscar resultado con número real si existe
-        let result = data.find(item => item.address && item.address.house_number);
-
-        if(!result){
-            result = data[0]; // fallback al primero
-        }
-
-        const lat = parseFloat(result.lat);
-        const lon = parseFloat(result.lon);
-
-        if(currentMarker){
-            map.removeLayer(currentMarker);
-        }
-
-        currentMarker = L.marker([lat,lon]).addTo(map);
-
-        map.setView([lat,lon],18);
-
-        checkZones(lat,lon);
-        saveToHistory(rawAddress);
-
-    }catch(error){
-        console.error("Error en búsqueda:", error);
-        alert("Error al buscar la dirección");
+    if(data.length === 0){
+        alert("Dirección no encontrada");
+        return;
     }
+
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
+
+    L.marker([lat,lon]).addTo(map);
+    map.setView([lat,lon],17);
+
+    checkZones(lat,lon);
+    saveToHistory(address);
 }
 
 // ================= VERIFICAR ZONA =================
@@ -211,3 +303,6 @@ function renderHistory(){
 renderHistory();
 
 </script>
+
+</body>
+</html>
