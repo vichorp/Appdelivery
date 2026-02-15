@@ -116,6 +116,8 @@ let zones = {
     2500:null
 };
 
+let currentMarker = null;
+
 // ================= ZONAS PREDETERMINADAS =================
 
 const defaultZone1500 = {
@@ -170,73 +172,77 @@ const defaultZone2500 = {
 };
 
 function loadZones(){
-
-    // Zona $1500
-    let layer1500 = L.geoJSON(defaultZone1500,{
-        style:{ color:"green" }
-    }).getLayers()[0];
-
+    let layer1500 = L.geoJSON(defaultZone1500,{ style:{ color:"green" }}).getLayers()[0];
     zones[1500] = layer1500;
     drawnItems.addLayer(layer1500);
 
-    // Zona $2500
-    let layer2500 = L.geoJSON(defaultZone2500,{
-        style:{ color:"red" }
-    }).getLayers()[0];
-
+    let layer2500 = L.geoJSON(defaultZone2500,{ style:{ color:"red" }}).getLayers()[0];
     zones[2500] = layer2500;
     drawnItems.addLayer(layer2500);
 }
 
 loadZones();
 
-// ================= DIBUJAR NUEVAS ZONAS =================
+// ================= NORMALIZACIÓN =================
 
-map.on(L.Draw.Event.CREATED, function(e){
+function normalizeAddress(text){
+    return text
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/\bav\b/g,"avenida")
+        .replace(/\bpto\b/g,"puerto")
+        .replace(/\bpje\b/g,"pasaje")
+        .trim();
+}
 
-    const price = document.getElementById("zoneSelector").value;
-    const layer = e.layer;
-
-    layer.setStyle({
-        color: price == 1500 ? "green" : "red"
-    });
-
-    if(zones[price]){
-        drawnItems.removeLayer(zones[price]);
-    }
-
-    zones[price] = layer;
-    drawnItems.addLayer(layer);
-});
-
-// ================= BUSCAR DIRECCIÓN =================
+// ================= BUSCAR DIRECCIÓN MEJORADA =================
 
 async function searchAddress(){
 
-    const address = document.getElementById("addressInput").value;
-    if(!address){
+    const rawAddress = document.getElementById("addressInput").value;
+    if(!rawAddress){
         alert("Ingresa una dirección");
         return;
     }
 
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address + ", San Pedro de la Paz, Chile")}`;
+    const address = normalizeAddress(rawAddress);
 
-    const response = await fetch(url,{ headers:{ "Accept-Language":"es" }});
-    const data = await response.json();
+    const viewbox = "-73.15,-36.88,-73.05,-36.80";
 
-    if(data.length === 0){
-        alert("Dirección no encontrada");
-        return;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&street=${encodeURIComponent(address)}&city=San Pedro de la Paz&country=Chile&countrycodes=cl&addressdetails=1&limit=3&viewbox=${viewbox}&bounded=1`;
+
+    try{
+
+        const response = await fetch(url,{ headers:{ "Accept-Language":"es" }});
+        const data = await response.json();
+
+        if(data.length === 0){
+            alert("Dirección no encontrada");
+            return;
+        }
+
+        let result = data.find(item => item.address && item.address.house_number);
+        if(!result){
+            result = data[0];
+        }
+
+        const lat = parseFloat(result.lat);
+        const lon = parseFloat(result.lon);
+
+        if(currentMarker){
+            map.removeLayer(currentMarker);
+        }
+
+        currentMarker = L.marker([lat,lon]).addTo(map);
+        map.setView([lat,lon],18);
+
+        checkZones(lat,lon);
+        saveToHistory(rawAddress);
+
+    }catch(error){
+        console.error("Error en búsqueda:", error);
+        alert("Error al buscar la dirección");
     }
-
-    const lat = parseFloat(data[0].lat);
-    const lon = parseFloat(data[0].lon);
-
-    L.marker([lat,lon]).addTo(map);
-    map.setView([lat,lon],17);
-
-    checkZones(lat,lon);
-    saveToHistory(address);
 }
 
 // ================= VERIFICAR ZONA =================
@@ -255,7 +261,6 @@ function isInside(point, vs){
 }
 
 function checkZones(lat,lon){
-
     const resultDiv = document.getElementById("result");
 
     for(let price of [1500,2500]){
